@@ -11,13 +11,13 @@ int main(int argc, char** argv) {
   std::cerr << options.ToString() << std::endl;
   YCSBGen::YCSBGenerator gen(options);
   std::vector<std::thread> pool;
-  for(int i=0;i<8;i++) {
+  for(int i=0;i<1;i++) {
     pool.emplace_back([&, i]() {
       std::mt19937_64 rndgen(i + options.base_seed);
       std::ofstream out("out"+std::to_string(i));
       while(!gen.IsEOF()) {
         auto op = gen.GetNextOp(rndgen);
-        out << op.key << ", " << std::string(op.value.data(), op.value.size()) << "\n"; 
+        out << int(op.type) << ": " << op.key << ", " << std::string(op.value.data(), op.value.size()) << "\n"; 
       }
     });
   }
