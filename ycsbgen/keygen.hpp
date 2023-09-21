@@ -27,9 +27,9 @@ class ZipfianGenerator : public KeyGenerator {
 };
 
 class ScrambledZipfianGenerator : public KeyGenerator {
-  ZipfianGenerator gen_;
   uint64_t l_, r_;
   IntHasher hasher_;
+  ZipfianGenerator gen_;
 
  public:
   ScrambledZipfianGenerator(uint64_t l, uint64_t r, double constant) 

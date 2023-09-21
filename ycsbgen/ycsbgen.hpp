@@ -38,18 +38,18 @@ struct YCSBGeneratorOptions {
     while(!in.eof()) {
       std::string s;
       std::getline(in, s);
-      int i = 0;
+      uint32_t i = 0;
       while(i < s.size() && isspace(s[i])) i++;
       /* ignore the line if it begins with '#'. */
       if (i >= s.size() || s[i] == '#') continue;
-      int name_i = i;
+      uint32_t name_i = i;
       /* find the first space or '='. Characters before it are the name. */
       while(i < s.size() && !isspace(s[i]) && s[i] != '=') i++;
       std::string name = s.substr(name_i, i - name_i);
       while(i < s.size() && s[i] != '=') i++;
       if (i >= s.size()) continue;
       i++;
-      int value_i = i;
+      uint32_t value_i = i;
       /* characters after '=' are the value. */
       while(i < s.size() && !isspace(s[i])) i++;
       names[name] = s.substr(value_i, i - value_i);
@@ -142,7 +142,7 @@ class YCSBGenerator {
       if (x <= options_.read_proportion) {
         return GenRead(rndgen);
       } else if (x <= options_.read_proportion + options_.insert_proportion) {
-        return GenInsert(rndgen);
+        return GenInsert();
       } else if (x <= options_.read_proportion + options_.insert_proportion + options_.update_proportion) {
         return GenUpdate(rndgen);
       } else {
@@ -150,7 +150,7 @@ class YCSBGenerator {
       }
     } else {
       now_ops_ += 1;
-      return GenInsert(rndgen);
+      return GenInsert();
     }
   }
 
@@ -159,7 +159,7 @@ class YCSBGenerator {
   }
 
  private:
-  Operation GenInsert(std::mt19937_64& rndgen) {
+  Operation GenInsert() {
     Operation ret;
     ret.type = OpType::INSERT;
     ret.key = BuildKeyName(now_keys_++);
