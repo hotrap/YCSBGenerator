@@ -56,23 +56,51 @@ class UniformGenerator : public KeyGenerator {
 
 };
 
+// Generate hotspot distribution in range [l, r).
 class HotspotGenerator : public KeyGenerator {
-  uint64_t l_, hotspot_r_, r_;
+  uint64_t l_, hotspot_r_, r_, offset_;
   double hotspot_opn_fraction_;
 
  public:
-  HotspotGenerator(uint64_t l, uint64_t r, double hotspot_set_fraction, double hotspot_opn_fraction)
-    : l_(l), hotspot_r_(l + hotspot_set_fraction * (r - l)), r_(r), hotspot_opn_fraction_(hotspot_opn_fraction) {}
+  HotspotGenerator(uint64_t l, uint64_t r, uint64_t offset, double hotspot_set_fraction, double hotspot_opn_fraction)
+    : l_(l), hotspot_r_(l + hotspot_set_fraction * (r - l)), r_(r), offset_(offset), hotspot_opn_fraction_(hotspot_opn_fraction) {}
 
   uint64_t GenKey(std::mt19937_64& rndgen) override {
     std::uniform_real_distribution<> dis(0, 1);
+    uint64_t ret = 0;
     if (dis(rndgen) <= hotspot_opn_fraction_) {
-      std::uniform_int_distribution<> dis_key(l_, hotspot_r_);
-      return dis_key(rndgen); 
+      std::uniform_int_distribution<> dis_key(l_, hotspot_r_ - 1);
+      ret = dis_key(rndgen) + offset_;
     } else {
-      std::uniform_int_distribution<> dis_key(hotspot_r_, r_);
-      return dis_key(rndgen);
+      std::uniform_int_distribution<> dis_key(hotspot_r_, r_ - 1);
+      ret = dis_key(rndgen) + offset_;
     }
+    if (ret >= r_) ret = (ret - l_) % (r_ - l_) + l_;
+    return ret;
+  }
+
+};
+
+// Generate hotspot distribution in range [l, r).
+// Two phases. Each phase has a hotspot distribution of different offsets.
+class HotspotShiftingGenerator : public KeyGenerator {
+  HotspotGenerator phase1_gen_;
+  HotspotGenerator phase2_gen_;
+  uint64_t phase1_op_;
+  std::atomic<uint64_t> count_{0};
+
+ public:
+  HotspotShiftingGenerator(uint64_t l, uint64_t r, uint64_t offset1, uint64_t offset2, double hotspot_set_fraction, double hotspot_opn_fraction, uint64_t phase1_op)
+    : phase1_gen_(l, r, offset1, hotspot_set_fraction, hotspot_opn_fraction), 
+      phase2_gen_(l, r, offset2, hotspot_set_fraction, hotspot_opn_fraction), phase1_op_(phase1_op) {}
+
+  uint64_t GenKey(std::mt19937_64& rndgen) override {
+    if (count_.load(std::memory_order_relaxed) <= phase1_op_) {
+      if (count_.fetch_add(1, std::memory_order_relaxed) <= phase1_op_) {
+        return phase1_gen_.GenKey(rndgen);  
+      }
+    }
+    return phase2_gen_.GenKey(rndgen);
   }
 
 };

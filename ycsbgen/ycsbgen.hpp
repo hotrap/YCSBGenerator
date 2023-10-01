@@ -30,6 +30,8 @@ struct YCSBGeneratorOptions {
   std::string request_distribution{"zipfian"};
   uint64_t load_sleep{150}; // in seconds.
 
+  uint64_t phase1_operation_count{10};
+
   static YCSBGeneratorOptions ReadFromFile(std::string filename) {
     std::ifstream in(filename);
     std::map<std::string, std::string> names;
@@ -74,6 +76,7 @@ struct YCSBGeneratorOptions {
     if (names.count("baseseed")) ret.base_seed = std::stoull(names["baseseed"]);
     if (names.count("requestdistribution")) ret.request_distribution = names["requestdistribution"];
     if (names.count("loadsleep")) ret.load_sleep = std::stoull(names["loadsleep"]);
+    if (names.count("phase1operationcount")) ret.phase1_operation_count = std::stoull(names["phase1operationcount"]);
     return ret;
   }
 
@@ -92,6 +95,7 @@ struct YCSBGeneratorOptions {
     ret += "baseseed = " + std::to_string(base_seed) + "\n";
     ret += "requestdistribution = " + request_distribution + "\n";
     ret += "loadsleep = " + std::to_string(load_sleep) + "\n";
+    ret += "phase1operationcount = " + std::to_string(phase1_operation_count) + "\n";
     return ret;
   }
 
@@ -136,9 +140,11 @@ class YCSBGenerator {
     } else if (options.request_distribution == "uniform") {
       key_generator_ = std::unique_ptr<KeyGenerator>(new UniformGenerator(0, estimate_key_count));
     } else if (options.request_distribution == "hotspot") {
-      key_generator_ = std::unique_ptr<KeyGenerator>(new HotspotGenerator(0, estimate_key_count, options.hotspot_set_fraction, options.hotspot_opn_fraction));
+      key_generator_ = std::unique_ptr<KeyGenerator>(new HotspotGenerator(0, estimate_key_count, 0, options.hotspot_set_fraction, options.hotspot_opn_fraction));
     } else if (options.request_distribution == "latest") {
       key_generator_ = std::unique_ptr<KeyGenerator>(new LatestGenerator(now_keys_));
+    } else if (options.request_distribution == "hotspotshifting") {
+      key_generator_ = std::unique_ptr<KeyGenerator>(new HotspotShiftingGenerator(0, estimate_key_count, 0, estimate_key_count * options.hotspot_set_fraction + 1, options.hotspot_set_fraction, options.hotspot_opn_fraction, options.phase1_operation_count));
     }
   }
 
