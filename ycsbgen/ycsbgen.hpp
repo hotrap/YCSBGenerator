@@ -11,6 +11,7 @@
 #include <map>
 #include <iostream>
 #include <atomic>
+#include <thread>
 
 namespace YCSBGen {
 
@@ -27,6 +28,7 @@ struct YCSBGeneratorOptions {
   size_t value_len{1000};
   size_t base_seed{0x202309202027};
   std::string request_distribution{"zipfian"};
+  uint64_t load_sleep{150}; // in seconds.
 
   static YCSBGeneratorOptions ReadFromFile(std::string filename) {
     std::ifstream in(filename);
@@ -49,6 +51,8 @@ struct YCSBGeneratorOptions {
       while(i < s.size() && s[i] != '=') i++;
       if (i >= s.size()) continue;
       i++;
+      /* skip spaces after '='. */
+      while(i < s.size() && isspace(s[i])) i++;
       uint32_t value_i = i;
       /* characters after '=' are the value. */
       while(i < s.size() && !isspace(s[i])) i++;
@@ -56,8 +60,8 @@ struct YCSBGeneratorOptions {
     }
 
     YCSBGeneratorOptions ret;
-    if (names.count("recordcount")) ret.record_count = std::stoi(names["recordcount"]);
-    if (names.count("operationcount")) ret.operation_count = std::stoi(names["operationcount"]);
+    if (names.count("recordcount")) ret.record_count = std::stoull(names["recordcount"]);
+    if (names.count("operationcount")) ret.operation_count = std::stoull(names["operationcount"]);
     if (names.count("readproportion")) ret.read_proportion = std::stof(names["readproportion"]);
     if (names.count("insertproportion")) ret.insert_proportion = std::stof(names["insertproportion"]);
     if (names.count("updateproportion")) ret.update_proportion = std::stof(names["updateproportion"]);
@@ -65,10 +69,11 @@ struct YCSBGeneratorOptions {
     if (names.count("zipfianconstant")) ret.zipfian_constant = std::stof(names["zipfianconstant"]);
     if (names.count("hotspotopnfraction")) ret.hotspot_opn_fraction = std::stof(names["hotspotopnfraction"]);
     if (names.count("hotspotdatafraction")) ret.hotspot_set_fraction = std::stof(names["hotspotdatafraction"]);
-    if (names.count("valuelength")) ret.value_len = std::stoi(names["valuelength"]);
-    else ret.value_len = (names.count("fieldcount") ? std::stoi(names["fieldcount"]) : 10) * (names.count("fieldlength") ? std::stoi(names["fieldlength"]) : 100);
-    if (names.count("baseseed")) ret.base_seed = std::stoi(names["baseseed"]);
+    if (names.count("valuelength")) ret.value_len = std::stoull(names["valuelength"]);
+    else ret.value_len = (names.count("fieldcount") ? std::stoull(names["fieldcount"]) : 10) * (names.count("fieldlength") ? std::stoull(names["fieldlength"]) : 100);
+    if (names.count("baseseed")) ret.base_seed = std::stoull(names["baseseed"]);
     if (names.count("requestdistribution")) ret.request_distribution = names["requestdistribution"];
+    if (names.count("loadsleep")) ret.load_sleep = std::stoull(names["loadsleep"]);
     return ret;
   }
 
@@ -86,6 +91,7 @@ struct YCSBGeneratorOptions {
     ret += "valuelength = " + std::to_string(value_len) + "\n";
     ret += "baseseed = " + std::to_string(base_seed) + "\n";
     ret += "requestdistribution = " + request_distribution + "\n";
+    ret += "loadsleep = " + std::to_string(load_sleep) + "\n";
     return ret;
   }
 
@@ -137,6 +143,10 @@ class YCSBGenerator {
   }
 
   Operation GetNextOp(std::mt19937_64& rndgen) {
+    if (now_ops_ == options_.record_count) {
+      // Loading is complete. We will sleep for a few seconds (default: 150s) to wait for compaction to finish.
+      std::this_thread::sleep_for(std::chrono::seconds(options_.load_sleep));
+    }
     if (now_ops_ >= options_.record_count) {
       now_ops_ += 1;
       std::uniform_real_distribution<> dis(0, 1);
