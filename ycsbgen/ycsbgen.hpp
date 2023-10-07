@@ -1,17 +1,18 @@
 #pragma once
 
-#include <string>
-#include <random>
+#include <atomic>
 #include <cstring>
+#include <fstream>
+#include <iostream>
+#include <map>
 #include <memory>
-#include "zipf.hpp"
+#include <random>
+#include <string>
+#include <thread>
+
 #include "hash.hpp"
 #include "keygen.hpp"
-#include <fstream>
-#include <map>
-#include <iostream>
-#include <atomic>
-#include <thread>
+#include "zipf.hpp"
 
 namespace YCSBGen {
 
@@ -123,65 +124,99 @@ struct Operation {
     type(_type), key(std::move(_key)), value(std::move(_value)) {}
 };
 
-class YCSBGenerator {
-  YCSBGeneratorOptions options_;
-  std::atomic<uint64_t> now_keys_{0};
-  std::atomic<uint64_t> now_ops_{0};
-  IntHasher key_hasher_;
-  
-  std::unique_ptr<KeyGenerator> key_generator_;
+namespace {
+static inline std::vector<char> GenNewValue(const std::string& key,
+                                            size_t value_len) {
+  std::vector<char> v(value_len);
+  std::memcpy(v.data(), key.data(), std::min(v.size(), key.size()));
+  return v;
+}
+static inline std::string BuildKeyName(IntHasher& key_hasher, uint64_t key) {
+  return "user" + std::to_string(key_hasher(key));
+}
+static inline Operation GenInsert(IntHasher& key_hasher,
+                                  std::atomic<uint64_t>& now_keys,
+                                  size_t value_len) {
+  Operation ret;
+  ret.type = OpType::INSERT;
+  ret.key = BuildKeyName(key_hasher, now_keys++);
+  ret.value = GenNewValue(ret.key, value_len);
+  return ret;
+}
 
+}  // namespace
+
+class YCSBRunGenerator;
+
+class YCSBLoadGenerator {
  public:
-  YCSBGenerator(const YCSBGeneratorOptions& options) 
-    : options_(options) {
-    uint64_t estimate_key_count = options.record_count + 2 * options.operation_count * options.insert_proportion;
+  YCSBLoadGenerator(const YCSBGeneratorOptions& options)
+      : options_(options), now_keys_(0) {}
+  bool IsEOF() const { return now_keys_ >= options_.record_count; }
+  Operation GetNextOp() {
+    return GenInsert(key_hasher_, now_keys_, options_.value_len);
+  }
+  inline YCSBRunGenerator into_run_generator();
+
+ private:
+  const YCSBGeneratorOptions& options_;
+  std::atomic<uint64_t> now_keys_;
+  IntHasher key_hasher_;
+};
+
+class YCSBRunGenerator {
+ public:
+  YCSBRunGenerator(const YCSBGeneratorOptions& options, size_t now_keys)
+      : options_(options), now_keys_(now_keys), now_ops_(0) {
+    uint64_t estimate_key_count =
+        options.record_count +
+        2 * options.operation_count * options.insert_proportion;
     if (options.request_distribution == "zipfian") {
-      key_generator_ = std::unique_ptr<KeyGenerator>(new ScrambledZipfianGenerator(0, estimate_key_count, options.zipfian_constant));
+      key_generator_ =
+          std::unique_ptr<KeyGenerator>(new ScrambledZipfianGenerator(
+              0, estimate_key_count, options.zipfian_constant));
     } else if (options.request_distribution == "uniform") {
-      key_generator_ = std::unique_ptr<KeyGenerator>(new UniformGenerator(0, estimate_key_count));
+      key_generator_ = std::unique_ptr<KeyGenerator>(
+          new UniformGenerator(0, estimate_key_count));
     } else if (options.request_distribution == "hotspot") {
-      key_generator_ = std::unique_ptr<KeyGenerator>(new HotspotGenerator(0, estimate_key_count, 0, options.hotspot_set_fraction, options.hotspot_opn_fraction));
+      key_generator_ = std::unique_ptr<KeyGenerator>(new HotspotGenerator(
+          0, estimate_key_count, 0, options.hotspot_set_fraction,
+          options.hotspot_opn_fraction));
     } else if (options.request_distribution == "latest") {
-      key_generator_ = std::unique_ptr<KeyGenerator>(new LatestGenerator(now_keys_));
+      key_generator_ =
+          std::unique_ptr<KeyGenerator>(new LatestGenerator(now_keys_));
     } else if (options.request_distribution == "hotspotshifting") {
-      key_generator_ = std::unique_ptr<KeyGenerator>(new HotspotShiftingGenerator(0, estimate_key_count, 0, estimate_key_count * options.hotspot_set_fraction + 1, options.hotspot_set_fraction, options.hotspot_opn_fraction, options.phase1_operation_count));
+      key_generator_ =
+          std::unique_ptr<KeyGenerator>(new HotspotShiftingGenerator(
+              0, estimate_key_count, 0,
+              estimate_key_count * options.hotspot_set_fraction + 1,
+              options.hotspot_set_fraction, options.hotspot_opn_fraction,
+              options.phase1_operation_count));
     }
   }
-
+  bool IsEOF() const { return now_ops_ >= options_.operation_count; }
   Operation GetNextOp(std::mt19937_64& rndgen) {
-    if (now_ops_ == options_.record_count) {
-      // Loading is complete. We will sleep for a few seconds (default: 150s) to wait for compaction to finish.
-      std::this_thread::sleep_for(std::chrono::seconds(options_.load_sleep));
-    }
-    if (now_ops_ >= options_.record_count) {
-      now_ops_ += 1;
-      std::uniform_real_distribution<> dis(0, 1);
-      double x = dis(rndgen);
-      if (x <= options_.read_proportion) {
-        return GenRead(rndgen);
-      } else if (x <= options_.read_proportion + options_.insert_proportion) {
-        return GenInsert();
-      } else if (x <= options_.read_proportion + options_.insert_proportion + options_.update_proportion) {
-        return GenUpdate(rndgen);
-      } else {
-        return GenRMW(rndgen);
-      }
-    } else {
-      now_ops_ += 1;
+    now_ops_ += 1;
+    std::uniform_real_distribution<> dis(0, 1);
+    double x = dis(rndgen);
+    if (x <= options_.read_proportion) {
+      return GenRead(rndgen);
+    } else if (x <= options_.read_proportion + options_.insert_proportion) {
       return GenInsert();
+    } else if (x <= options_.read_proportion + options_.insert_proportion +
+                        options_.update_proportion) {
+      return GenUpdate(rndgen);
+    } else {
+      return GenRMW(rndgen);
     }
-  }
-
-  bool IsEOF() const {
-    return now_ops_ >= options_.record_count + options_.operation_count;
   }
 
  private:
   Operation GenInsert() {
     Operation ret;
     ret.type = OpType::INSERT;
-    ret.key = BuildKeyName(now_keys_++);
-    ret.value = GenNewValue(ret.key);
+    ret.key = BuildKeyName(key_hasher_, now_keys_++);
+    ret.value = GenNewValue(ret.key, options_.value_len);
     return ret;
   }
 
@@ -196,7 +231,7 @@ class YCSBGenerator {
     Operation ret;
     ret.type = OpType::UPDATE;
     ret.key = ChooseKey(rndgen);
-    ret.value = GenNewValue(ret.key);
+    ret.value = GenNewValue(ret.key, options_.value_len);
     return ret;
   }
 
@@ -204,29 +239,28 @@ class YCSBGenerator {
     Operation ret;
     ret.type = OpType::RMW;
     ret.key = ChooseKey(rndgen);
-    ret.value = GenNewValue(ret.key);
+    ret.value = GenNewValue(ret.key, options_.value_len);
     return ret;
-  }
-
-  std::string BuildKeyName(uint64_t key) {
-    return "user" + std::to_string(key_hasher_(key));
   }
 
   std::string ChooseKey(std::mt19937_64& rndgen) {
     while (true) {
       auto ret = key_generator_->GenKey(rndgen);
       if (ret < now_keys_) {
-        return BuildKeyName(ret);
+        return BuildKeyName(key_hasher_, ret);
       }
     }
   }
 
-  std::vector<char> GenNewValue(const std::string& key) {
-    std::vector<char> v(options_.value_len);
-    std::memcpy(v.data(), key.data(), std::min(v.size(), key.size()));
-    return v;
-  }
+  const YCSBGeneratorOptions& options_;
+  std::atomic<uint64_t> now_keys_;
+  std::atomic<uint64_t> now_ops_;
+  IntHasher key_hasher_;
 
+  std::unique_ptr<KeyGenerator> key_generator_;
 };
 
+inline YCSBRunGenerator YCSBLoadGenerator::into_run_generator() {
+  return YCSBRunGenerator(options_, now_keys_);
+}
 }
