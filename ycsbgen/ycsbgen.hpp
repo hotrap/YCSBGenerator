@@ -180,7 +180,7 @@ class YCSBRunGenerator {
           new UniformGenerator(0, estimate_key_count));
     } else if (options.request_distribution == "hotspot") {
       key_generator_ = std::unique_ptr<KeyGenerator>(new HotspotGenerator(
-          0, estimate_key_count, 0, options.hotspot_set_fraction,
+          0, options.record_count, 0, options.hotspot_set_fraction,
           options.hotspot_opn_fraction));
     } else if (options.request_distribution == "latest") {
       key_generator_ =
