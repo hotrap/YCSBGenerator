@@ -31,7 +31,7 @@ struct YCSBGeneratorOptions {
   std::string request_distribution{"zipfian"};
   uint64_t load_sleep{150}; // in seconds.
 
-  uint64_t phase1_operation_count{10};
+  uint64_t phase1_operation_count{0};
 
   static YCSBGeneratorOptions ReadFromFile(std::string filename) {
     std::ifstream in(filename);
@@ -194,7 +194,10 @@ class YCSBRunGenerator {
               options.phase1_operation_count));
     }
   }
-  bool IsEOF() const { return now_ops_ >= options_.operation_count; }
+  bool IsEOF() const {
+    return now_ops_ >=
+           options_.operation_count + options_.phase1_operation_count;
+  }
   Operation GetNextOp(std::mt19937_64& rndgen) {
     now_ops_ += 1;
     std::uniform_real_distribution<> dis(0, 1);
