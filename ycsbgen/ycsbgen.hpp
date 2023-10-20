@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <chrono>
 #include <cstring>
 #include <fstream>
 #include <iostream>
@@ -29,7 +30,7 @@ struct YCSBGeneratorOptions {
   size_t value_len{1000};
   size_t base_seed{0x202309202027};
   std::string request_distribution{"zipfian"};
-  uint64_t load_sleep{150}; // in seconds.
+  uint64_t load_sleep{0};  // in seconds.
 
   uint64_t phase1_operation_count{0};
 
@@ -264,6 +265,7 @@ class YCSBRunGenerator {
 };
 
 inline YCSBRunGenerator YCSBLoadGenerator::into_run_generator() {
+  std::this_thread::sleep_for(std::chrono::seconds(options_.load_sleep));
   return YCSBRunGenerator(options_, now_keys_);
 }
 }
