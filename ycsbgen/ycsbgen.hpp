@@ -158,7 +158,7 @@ class YCSBLoadGenerator {
     return GenInsert(key_hasher_, now_keys_, options_.value_len);
   }
   Operation GetNextOp(std::mt19937_64&) {
-    return GenNextOp();
+    return GetNextOp();
   }
   inline YCSBRunGenerator into_run_generator();
 
