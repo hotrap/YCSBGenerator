@@ -151,8 +151,9 @@ class YCSBRunGenerator;
 
 class YCSBLoadGenerator {
  public:
-  YCSBLoadGenerator(const YCSBGeneratorOptions& options)
-      : options_(options), now_keys_(0) {}
+  YCSBLoadGenerator(const YCSBGeneratorOptions& options,
+                    uint64_t now_key_num = 0)
+      : options_(options), now_keys_(now_key_num) {}
   bool IsEOF() const { return now_keys_ >= options_.record_count; }
   Operation GetNextOp() {
     return GenInsert(key_hasher_, now_keys_, options_.value_len);
