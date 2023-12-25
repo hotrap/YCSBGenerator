@@ -33,6 +33,8 @@ struct YCSBGeneratorOptions {
   uint64_t load_sleep{0};  // in seconds.
 
   uint64_t phase1_operation_count{0};
+  double phase1_hotspot_opn_fraction{0};
+  double phase1_hotspot_set_fraction{0};
 
   static YCSBGeneratorOptions ReadFromFile(std::string filename) {
     std::ifstream in(filename);
@@ -79,6 +81,16 @@ struct YCSBGeneratorOptions {
     if (names.count("requestdistribution")) ret.request_distribution = names["requestdistribution"];
     if (names.count("loadsleep")) ret.load_sleep = std::stoull(names["loadsleep"]);
     if (names.count("phase1operationcount")) ret.phase1_operation_count = std::stoull(names["phase1operationcount"]);
+    if (names.count("phase1hotspotopnfraction"))
+      ret.phase1_hotspot_opn_fraction =
+          std::stof(names["phase1hotspotopnfraction"]);
+    else
+      ret.phase1_hotspot_opn_fraction = ret.hotspot_opn_fraction;
+    if (names.count("phase1hotspotdatafraction"))
+      ret.phase1_hotspot_set_fraction =
+          std::stof(names["phase1hotspotdatafraction"]);
+    else
+      ret.phase1_hotspot_set_fraction = ret.hotspot_set_fraction;
     return ret;
   }
 
@@ -98,6 +110,10 @@ struct YCSBGeneratorOptions {
     ret += "requestdistribution = " + request_distribution + "\n";
     ret += "loadsleep = " + std::to_string(load_sleep) + "\n";
     ret += "phase1operationcount = " + std::to_string(phase1_operation_count) + "\n";
+    ret += "phase1hotspotopnfraction = " +
+           std::to_string(phase1_hotspot_opn_fraction) + "\n";
+    ret += "phase1hotspotdatafraction = " +
+           std::to_string(phase1_hotspot_set_fraction) + "\n";
     return ret;
   }
 
@@ -193,9 +209,19 @@ class YCSBRunGenerator {
     } else if (options.request_distribution == "hotspotshifting") {
       key_generator_ =
           std::unique_ptr<KeyGenerator>(new HotspotShiftingGenerator(
-              0, estimate_key_count, 0,
-              estimate_key_count * options.hotspot_set_fraction + 1,
-              options.hotspot_set_fraction, options.hotspot_opn_fraction,
+              0, estimate_key_count,
+              HotspotShiftingGenerator::PhaseConfig{
+                  .offset = 0,
+                  .hotspot_set_fraction = options.hotspot_set_fraction,
+                  .hotspot_opn_fraction = options.hotspot_opn_fraction,
+              },
+              HotspotShiftingGenerator::PhaseConfig{
+                  .offset = (uint64_t)(estimate_key_count *
+                                           options.hotspot_set_fraction +
+                                       1),
+                  .hotspot_set_fraction = options.phase1_hotspot_set_fraction,
+                  .hotspot_opn_fraction = options.phase1_hotspot_opn_fraction,
+              },
               options.phase1_operation_count));
     }
   }

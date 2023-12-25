@@ -90,9 +90,18 @@ class HotspotShiftingGenerator : public KeyGenerator {
   std::atomic<uint64_t> count_{0};
 
  public:
-  HotspotShiftingGenerator(uint64_t l, uint64_t r, uint64_t offset1, uint64_t offset2, double hotspot_set_fraction, double hotspot_opn_fraction, uint64_t phase1_op)
-    : phase1_gen_(l, r, offset1, hotspot_set_fraction, hotspot_opn_fraction), 
-      phase2_gen_(l, r, offset2, hotspot_set_fraction, hotspot_opn_fraction), phase1_op_(phase1_op) {}
+  struct PhaseConfig {
+    uint64_t offset;
+    double hotspot_set_fraction;
+    double hotspot_opn_fraction;
+  };
+  HotspotShiftingGenerator(uint64_t l, uint64_t r, PhaseConfig phase1,
+                           PhaseConfig phase2, uint64_t phase1_op)
+      : phase1_gen_(l, r, phase1.offset, phase1.hotspot_set_fraction,
+                    phase1.hotspot_opn_fraction),
+        phase2_gen_(l, r, phase2.offset, phase2.hotspot_set_fraction,
+                    phase2.hotspot_opn_fraction),
+        phase1_op_(phase1_op) {}
 
   uint64_t GenKey(std::mt19937_64& rndgen) override {
     if (count_.load(std::memory_order_relaxed) <= phase1_op_) {
