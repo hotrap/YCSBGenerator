@@ -209,16 +209,15 @@ class YCSBRunGenerator {
     } else if (options.request_distribution == "hotspotshifting") {
       key_generator_ =
           std::unique_ptr<KeyGenerator>(new HotspotShiftingGenerator(
-              0, estimate_key_count,
+              0, options.record_count,
               HotspotShiftingGenerator::PhaseConfig{
                   .offset = 0,
                   .hotspot_set_fraction = options.hotspot_set_fraction,
                   .hotspot_opn_fraction = options.hotspot_opn_fraction,
               },
               HotspotShiftingGenerator::PhaseConfig{
-                  .offset = (uint64_t)(estimate_key_count *
-                                           options.hotspot_set_fraction +
-                                       1),
+                  .offset = (uint64_t)(options.record_count *
+                                           options.hotspot_set_fraction),
                   .hotspot_set_fraction = options.phase1_hotspot_set_fraction,
                   .hotspot_opn_fraction = options.phase1_hotspot_opn_fraction,
               },
