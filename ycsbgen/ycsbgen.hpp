@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <cassert>
 #include <chrono>
 #include <cstring>
 #include <fstream>
@@ -24,6 +25,7 @@ struct YCSBGeneratorOptions {
   double insert_proportion{0};
   double update_proportion{0};
   double rmw_proportion{0};
+  double scan_proportion{0};
   double zipfian_constant{0.99};
   double hotspot_opn_fraction{0.1};
   double hotspot_set_fraction{0.1};
@@ -72,6 +74,8 @@ struct YCSBGeneratorOptions {
     if (names.count("insertproportion")) ret.insert_proportion = std::stof(names["insertproportion"]);
     if (names.count("updateproportion")) ret.update_proportion = std::stof(names["updateproportion"]);
     if (names.count("rmwproportion")) ret.rmw_proportion = std::stof(names["rmwproportion"]);
+    if (names.count("scanproportion"))
+      ret.scan_proportion = std::stof(names["scanproportion"]);
     if (names.count("zipfianconstant")) ret.zipfian_constant = std::stof(names["zipfianconstant"]);
     if (names.count("hotspotopnfraction")) ret.hotspot_opn_fraction = std::stof(names["hotspotopnfraction"]);
     if (names.count("hotspotdatafraction")) ret.hotspot_set_fraction = std::stof(names["hotspotdatafraction"]);
@@ -102,6 +106,7 @@ struct YCSBGeneratorOptions {
     ret += "insertproportion = " + std::to_string(insert_proportion) + "\n";
     ret += "updateproportion = " + std::to_string(update_proportion) + "\n";
     ret += "rmwproportion = " + std::to_string(rmw_proportion) + "\n";
+    ret += "scanproportion = " + std::to_string(scan_proportion) + "\n";
     ret += "zipfianconstant = " + std::to_string(zipfian_constant) + "\n";
     ret += "hotspotopnfraction = " + std::to_string(hotspot_opn_fraction) + "\n";
     ret += "hotspotdatafraction = " + std::to_string(hotspot_set_fraction) + "\n";
@@ -124,13 +129,15 @@ enum class OpType {
   READ,
   UPDATE,
   RMW,
+  DELETE,
+  SCAN,
 };
-
 
 struct Operation {
   OpType type;
   std::string key;
   std::vector<char> value;
+  size_t scan_len;
 
   Operation() {}
 
@@ -139,6 +146,9 @@ struct Operation {
 
   Operation(OpType _type, std::string&& _key, std::vector<char>&& _value) :
     type(_type), key(std::move(_key)), value(std::move(_value)) {}
+
+  Operation(OpType _type, std::string&& _key, size_t _scan_len)
+      : type(_type), key(_key), scan_len(_scan_len) {}
 };
 
 namespace {
@@ -234,14 +244,20 @@ class YCSBRunGenerator {
     double x = dis(rndgen);
     if (x <= options_.read_proportion) {
       return GenRead(rndgen);
-    } else if (x <= options_.read_proportion + options_.insert_proportion) {
+    }
+    x -= options_.read_proportion;
+    if (x <= options_.insert_proportion) {
       return GenInsert();
-    } else if (x <= options_.read_proportion + options_.insert_proportion +
-                        options_.update_proportion) {
+    }
+    x -= options_.insert_proportion;
+    if (x <= options_.update_proportion) {
       return GenUpdate(rndgen);
-    } else {
+    }
+    x -= options_.update_proportion;
+    if (x <= options_.rmw_proportion) {
       return GenRMW(rndgen);
     }
+    return GenScan(rndgen);
   }
 
  private:
@@ -274,6 +290,11 @@ class YCSBRunGenerator {
     ret.key = ChooseKey(rndgen);
     ret.value = GenNewValue(ret.key, options_.value_len);
     return ret;
+  }
+
+  Operation GenScan(std::mt19937_64& rndgen) {
+    return Operation(OpType::SCAN, ChooseKey(rndgen),
+                     std::uniform_int_distribution<>(1, 100)(rndgen));
   }
 
   std::string ChooseKey(std::mt19937_64& rndgen) {
