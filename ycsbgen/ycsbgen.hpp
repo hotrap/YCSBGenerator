@@ -32,6 +32,7 @@ struct YCSBGeneratorOptions {
   size_t value_len{1000};
   size_t base_seed{0x202309202027};
   std::string request_distribution{"zipfian"};
+  uint64_t max_scan_length{100};
   uint64_t load_sleep{0};  // in seconds.
 
   uint64_t phase1_operation_count{0};
@@ -83,7 +84,10 @@ struct YCSBGeneratorOptions {
     else ret.value_len = (names.count("fieldcount") ? std::stoull(names["fieldcount"]) : 10) * (names.count("fieldlength") ? std::stoull(names["fieldlength"]) : 100);
     if (names.count("baseseed")) ret.base_seed = std::stoull(names["baseseed"]);
     if (names.count("requestdistribution")) ret.request_distribution = names["requestdistribution"];
-    if (names.count("loadsleep")) ret.load_sleep = std::stoull(names["loadsleep"]);
+    if (names.count("maxscanlength"))
+      ret.max_scan_length = std::stoull(names["maxscanlength"]);
+    if (names.count("loadsleep"))
+      ret.load_sleep = std::stoull(names["loadsleep"]);
     if (names.count("phase1operationcount")) ret.phase1_operation_count = std::stoull(names["phase1operationcount"]);
     if (names.count("phase1hotspotopnfraction"))
       ret.phase1_hotspot_opn_fraction =
@@ -293,8 +297,9 @@ class YCSBRunGenerator {
   }
 
   Operation GenScan(std::mt19937_64& rndgen) {
-    return Operation(OpType::SCAN, ChooseKey(rndgen),
-                     std::uniform_int_distribution<>(1, 100)(rndgen));
+    return Operation(
+        OpType::SCAN, ChooseKey(rndgen),
+        std::uniform_int_distribution<>(1, options_.max_scan_length)(rndgen));
   }
 
   std::string ChooseKey(std::mt19937_64& rndgen) {
