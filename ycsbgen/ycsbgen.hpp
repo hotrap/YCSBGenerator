@@ -201,6 +201,12 @@ class YCSBLoadGenerator {
 
 class YCSBRunGenerator {
  public:
+  YCSBRunGenerator(const YCSBGeneratorOptions& options, size_t now_keys,
+                   std::unique_ptr<KeyGenerator> key_generator)
+      : options_(options),
+        now_keys_(now_keys),
+        now_ops_(0),
+        key_generator_(std::move(key_generator)) {}
   YCSBRunGenerator(const YCSBGeneratorOptions& options, size_t now_keys)
       : options_(options), now_keys_(now_keys), now_ops_(0) {
     uint64_t estimate_key_count =
