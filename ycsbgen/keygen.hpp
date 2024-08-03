@@ -9,6 +9,8 @@ namespace YCSBGen {
 
 class KeyGenerator {
  public:
+  virtual ~KeyGenerator() = default;
+
   /* Generate a random key from the distribution */
   virtual uint64_t GenKey(std::mt19937_64&) = 0;
 
